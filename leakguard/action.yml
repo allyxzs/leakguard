@@ -1,0 +1,70 @@
+name: "LeakGuard Secret Scan"
+description: "Detecta chaves de API, senhas e tokens no código e no histórico Git."
+author: "allyxzs"
+branding:
+  icon: shield
+  color: green
+inputs:
+  mode:
+    description: "scan | history | env"
+    default: "history"
+  path:
+    description: "Diretório a ser varrido"
+    default: "."
+  sarif:
+    description: "Gerar leakguard.sarif para o GitHub Code Scanning"
+    default: "true"
+  fail-on-findings:
+    description: "Falhar o job quando houver segredos"
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: "1.22"
+        cache: false # Este projeto não possui dependências externas nem go.sum.
+    - name: Build LeakGuard
+      shell: bash
+      env:
+        LG_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        cd "$LG_ACTION_PATH"
+        go build -o "$RUNNER_TEMP/leakguard" ./cmd/leakguard
+    - name: Run LeakGuard
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        LG_MODE: ${{ inputs.mode }}
+        LG_SARIF: ${{ inputs.sarif }}
+        LG_FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+      run: |
+        case "$LG_MODE" in
+          scan|history|env) ;;
+          *) echo "::error title=LeakGuard::Modo inválido. Use scan, history ou env."; exit 2 ;;
+        esac
+        for value in "$LG_SARIF" "$LG_FAIL_ON_FINDINGS"; do
+          case "$value" in
+            true|false) ;;
+            *) echo "::error title=LeakGuard::As opções booleanas devem ser true ou false."; exit 2 ;;
+          esac
+        done
+        LG="$RUNNER_TEMP/leakguard"
+        code=0
+        "$LG" "$LG_MODE" --no-color || code=$?
+        if [ "$code" -gt 1 ]; then
+          echo "::error title=LeakGuard::Erro ao executar a varredura. Veja o relatório acima."
+          exit "$code"
+        fi
+        if [ "$LG_SARIF" = "true" ]; then
+          sarif_code=0
+          "$LG" "$LG_MODE" --format sarif --output "$GITHUB_WORKSPACE/leakguard.sarif" --no-fail || sarif_code=$?
+          if [ "$sarif_code" -ne 0 ]; then
+            echo "::error title=LeakGuard::Não foi possível gerar o relatório SARIF."
+            exit "$sarif_code"
+          fi
+        fi
+        if [ "$code" -eq 1 ] && [ "$LG_FAIL_ON_FINDINGS" = "true" ]; then
+          echo "::error title=LeakGuard::Possíveis segredos encontrados. Veja o relatório acima."
+          exit 1
+        fi

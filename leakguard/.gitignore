@@ -1,0 +1,13 @@
+/leakguard
+/dist/
+*.sarif
+.env
+# Configurações locais e arquivos de credenciais
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx

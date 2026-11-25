@@ -1,0 +1,4 @@
+# Arquivos de exemplo propositalmente "vazados" para demonstração e testes
+testdata/**
+docs/**
+*_test.go
